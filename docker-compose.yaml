@@ -36,7 +36,7 @@ x-vc-environment:
 x-vc-volumes:
   &default-vc-volumes
   - type: bind
-    source: ./channels
+    source: /channels
     target: /channels
 
 services:
@@ -49,7 +49,7 @@ services:
     environment: *default-vc-environment
     volumes:
       - type: bind
-        source: ./channels
+        source: /channels
         target: /var/www/unified-origin/
 
   # Virtual Channel application
@@ -69,7 +69,7 @@ services:
     environment: *default-vc-environment
     volumes:
       - type: bind
-        source: ./channels
+        source: /channels
         target: /channels
     command: uvicorn app.main:app --host 0.0.0.0 --port 80 --proxy-headers --forwarded-allow-ips *
 
@@ -113,11 +113,60 @@ services:
     image: traefik:v2.7
     logging: *default-logging
     restart: always
+    env_file:
+      - traefik.env
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
+  vod-origin:
+    image:   unifiedstreaming/origin:latest
+    container_name: vod-origin
+    logging: *default-logging
+    restart: always
+    env_file:
+      - vod-origin.env
+    volumes:
+      - type: bind
+        source: /channels
+        target: /var/www/unified-origin/
 
+  nginx-proxy:
+    logging: *default-logging
+    image: nginxproxy/nginx-proxy:alpine
+    container_name: nginx-proxy
+    restart: always
+    ports:
+      - '80:80'
+      - '443:443'
+    env_file:
+      - nginx.env
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+      - ./conf.d.proxy/proxy.conf:/etc/nginx/proxy.conf
+      - certs:/etc/nginx/certs
+      - vhostd:/etc/nginx/vhost.d
+      - html:/usr/share/nginx/html 
+  acme-companion:
+    logging: *default-logging
+    image: nginxproxy/acme-companion
+    container_name: acme-companion
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - certs:/etc/nginx/certs
+      - vhostd:/etc/nginx/vhost.d
+      - html:/usr/share/nginx/html
+      - acme:/etc/acme.sh
+    env_file:
+      - acme-companion.env
 volumes:
   rabbitmq_data:
     driver: local
   redis_data:
+    driver: local
+  acme:
+    driver: local
+  certs:
+    driver: local
+  html:
+    driver: local
+  vhostd:
     driver: local
